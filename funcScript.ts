@@ -39,8 +39,8 @@ const initializeLayer = (
   const emptyNeurons = Array.from(Array(outputSize), () => 0);
   const initializedNeurons: NeuronInfo[] = emptyNeurons.map(() => {
     return {
-      bias: 0,
-      weights: Array.from(Array(inputSize), () => 1),
+      bias: (Math.random() - 1) * 2,
+      weights: Array.from(Array(inputSize), () => (Math.random() - 1) * 2),
     };
   });
   return { neurons: initializedNeurons, inputSize, inputLayer };
@@ -103,10 +103,60 @@ const calculateCost = (outputs: number[], expectedOutputs: number[]) => {
   return cost;
 };
 
-const network = initializeNetwork([2, 2, 1], sigmoid);
+const calculateGradientForSingleInput = (
+  network: NetworkInfo,
+  inputs: number[],
+  expectedOutputs: number[]
+) => {
+  return network.layers.map((layer, layerPosition) => {
+    return layer.neurons.map((neuron, neuronPosition) => {
+      return neuron.weights.map((weight, weightPosition) => {
+        const previousNetworkOutputs = testInputsOnNetwork(inputs, network);
+        const previousNetworkCost = calculateCost(
+          previousNetworkOutputs,
+          expectedOutputs
+        );
 
-console.log(testInputsOnNetwork([1, 1], network));
+        network.layers[layerPosition].neurons[neuronPosition].weights[
+          weightPosition
+        ] += 0.00001;
+        const newNetworkOutputs = testInputsOnNetwork(inputs, network);
+        const newNetworkCost = calculateCost(
+          newNetworkOutputs,
+          expectedOutputs
+        );
 
-console.log(calculateCost([0.3, 0.2, 0.6], [0, 0, 1]));
+        return (newNetworkCost - previousNetworkCost) / 0.00001;
+      });
+    });
+  });
+};
 
-deepLog(network);
+const updateNetwork = (network: NetworkInfo, weights: number[][][]) => {
+  const learnRate = 5;
+  weights.map((layerWeights, layerWeightsPosition) => {
+    layerWeights.map((neuronWeights, neuronWeightsPosition) => {
+      neuronWeights.map((weight, weightPosition) => {
+        network.layers[layerWeightsPosition].neurons[
+          neuronWeightsPosition
+        ].weights[weightPosition] -= weight * learnRate;
+      });
+    });
+  });
+  return network;
+};
+
+// console.log(testInputsOnNetwork([1, 1], network));
+
+// console.log(calculateCost([0.3, 0.2, 0.6], [0, 0, 1]));
+
+// deepLog(network);
+// console.log(testInputsOnNetwork([2, 3], network));
+
+const network = initializeNetwork([2, 3, 3, 2], sigmoid);
+const d1 = calculateGradientForSingleInput(network, [2, 2], [1, 0]);
+
+const network2 = updateNetwork(network, d1);
+const d2 = calculateGradientForSingleInput(network2, [2, 2], [1, 0]);
+
+// I'm close, but I also have to update gradient for biases, not just weights
