@@ -278,6 +278,9 @@ const formattedData = parseCSV("IRIS.csv").map(
   }
 );
 
-console.log(formattedData);
+const network = initializeNetwork([2, 6, 6, 6, 2], sigmoid);
 
-// const network = initializeNetwork([2, 2], sigmoid);
+const newNet = trainOnSingleInputTEST(network, 5000, [3, 3], [0, 1]);
+
+console.log(testInputsOnNetwork([2, 2], network));
+console.log(testInputsOnNetwork([2, 2], newNet));
