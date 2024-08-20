@@ -1,4 +1,5 @@
 // I could possibly remove the 'inputSize' attribute from the layerInfo object
+import exp from "constants";
 import fs from "fs";
 import path from "path";
 
@@ -98,7 +99,7 @@ const testInputsOnNetwork = (inputs: number[], network: NetworkInfo) => {
   if (inputs.length !== network.layers[0].neurons.length) {
     throw Error("Inputs does not match network");
   } else {
-    return getLayerOutput([1, 1], network, network.layers.length - 1);
+    return getLayerOutput(inputs, network, network.layers.length - 1);
   }
 };
 
@@ -107,6 +108,23 @@ const calculateCost = (outputs: number[], expectedOutputs: number[]) => {
     return acc + (output - expectedOutputs[outputIndex]) ** 2;
   }, 0);
   return cost;
+};
+
+// Problem has GOTTA be in here... right?
+const calculateAverageCost = (
+  outputsList: number[][],
+  expectedOutputsList: number[][]
+) => {
+  // console.log("----------------------------------------------------");
+  // console.log({ outputsList, expectedOutputsList });
+  const totalCost = outputsList.reduce((acc, outputs, outputsPosition) => {
+    return (acc += calculateCost(
+      outputs,
+      expectedOutputsList[outputsPosition]
+    ));
+  }, 0);
+  // console.log(totalCost);
+  return totalCost / outputsList.length;
 };
 
 const calculateWeightGradientForSingleInput = (
@@ -132,7 +150,52 @@ const calculateWeightGradientForSingleInput = (
           expectedOutputs
         );
 
+        // network.layers[layerPosition].neurons[neuronPosition].weights[
+        // weightPosition
+        // ] -= 0.00001;
+
         return (newNetworkCost - previousNetworkCost) / 0.00001;
+      });
+    });
+  });
+};
+
+const calculateWeightGradient = (
+  network: NetworkInfo,
+  inputsList: number[][],
+  expectedOutputsList: number[][]
+) => {
+  const networkOutputsList = inputsList.map((inputs) => {
+    return testInputsOnNetwork(inputs, network);
+  });
+  const prevNetworkAvgCost = calculateAverageCost(
+    networkOutputsList,
+    expectedOutputsList
+  );
+  return network.layers.map((layer, layerPosition) => {
+    return layer.neurons.map((neuron, neuronPosition) => {
+      return neuron.weights.map((weight, weightPosition) => {
+        network.layers[layerPosition].neurons[neuronPosition].weights[
+          weightPosition
+        ] += 0.00001;
+        const newNetworkOutputsList = inputsList.map((inputs) => {
+          // console.log(inputs);
+          const output = testInputsOnNetwork(inputs, network);
+          // console.log(output);
+          return output;
+        });
+        const newNetworkCost = calculateAverageCost(
+          newNetworkOutputsList,
+          expectedOutputsList
+        );
+        // console.log({
+        // inputsList,
+        // networkOutputsList,
+        // expectedOutputsList,
+        // networkDeriv: (newNetworkCost - prevNetworkAvgCost) / 0.00001,
+        // });
+        return (newNetworkCost - prevNetworkAvgCost) / 0.00001;
+        // Add small value, test inputs, calculate new avg cost, return the new cost - old cost / small value
       });
     });
   });
@@ -160,15 +223,41 @@ const calculateBiasGradientForSingleInput = (
   });
 };
 
+const calculateBiasGradient = (
+  network: NetworkInfo,
+  inputsList: number[][],
+  expectedOutputsList: number[][]
+) => {
+  const networkOutputsList = inputsList.map((inputs) => {
+    return testInputsOnNetwork(inputs, network);
+  });
+  const prevNetworkAvgCost = calculateAverageCost(
+    networkOutputsList,
+    expectedOutputsList
+  );
+  return network.layers.map((layer, layerPosition) => {
+    return layer.neurons.map((neuron, neuronPosition) => {
+      network.layers[layerPosition].neurons[neuronPosition].bias += 0.00001;
+      const newNetworkOutputsList = inputsList.map((inputs) => {
+        return testInputsOnNetwork(inputs, network);
+      });
+      const newNetworkCost = calculateAverageCost(
+        newNetworkOutputsList,
+        expectedOutputsList
+      );
+      return (newNetworkCost - prevNetworkAvgCost) / 0.00001;
+    });
+  });
+};
 const updateNetwork = (
   network: NetworkInfo,
   weightGradients: number[][][],
   biasGradients: number[][]
 ) => {
-  const newNetwork: NetworkInfo = { layers: [], activationFunction: () => 0 };
-  newNetwork.layers = structuredClone(network.layers);
-  newNetwork.activationFunction = network.activationFunction;
-  newNetwork.layers = structuredClone(network.layers);
+  const newNetwork: NetworkInfo = {
+    activationFunction: network.activationFunction,
+    layers: structuredClone(network.layers),
+  };
 
   const learnRate = 5;
   weightGradients.map((layerWeightGradients, layerWeightGradientsPosition) => {
@@ -257,11 +346,13 @@ const mapSpeciesToExpectedOutput = (species: string) => {
 // WORK ON THIS ONE
 const trainNetworkOneIteration = (
   network: NetworkInfo,
-  trainingData: number[][]
+  trainingData: number[][][]
 ) => {
-  const totalCost = trainingData.reduce((acc, [inputs, outputs]) => {
-    return acc;
-  }, 0);
+  const inputs = trainingData.map((trainingData) => trainingData[0]);
+  const outputs = trainingData.map((trainingData) => trainingData[1]);
+  const weightGradient = calculateWeightGradient(network, inputs, outputs);
+  const biasGradient = calculateBiasGradient(network, inputs, outputs);
+  return updateNetwork(network, weightGradient, biasGradient);
 };
 
 const formattedData = parseCSV("IRIS.csv").map(
@@ -278,9 +369,61 @@ const formattedData = parseCSV("IRIS.csv").map(
   }
 );
 
-const network = initializeNetwork([2, 6, 6, 6, 2], sigmoid);
+// const network = initializeNetwork([2, 6, 6, 6, 2], sigmoid);
 
-const newNet = trainOnSingleInputTEST(network, 5000, [3, 3], [0, 1]);
+// const newNet = trainOnSingleInputTEST(network, 5000, [3, 3], [0, 1]);
 
-console.log(testInputsOnNetwork([2, 2], network));
-console.log(testInputsOnNetwork([2, 2], newNet));
+// console.log(testInputsOnNetwork([2, 2], network));
+// console.log(testInputsOnNetwork([2, 2], newNet));
+
+const irisNetwork = initializeNetwork([4, 3, 3], sigmoid);
+
+let bestNetwork: NetworkInfo = { layers: [], activationFunction: () => 0 };
+bestNetwork.layers = structuredClone(irisNetwork.layers);
+bestNetwork.activationFunction = irisNetwork.activationFunction;
+
+// for (let i = 0; i <= 1000; i++) {
+// bestNetwork.layers = structuredClone(
+// trainNetworkOneIteration(bestNetwork, formattedData).layers
+// );
+// }
+
+const iterable = Array.from(Array(1000), () => 0);
+
+const realBestNetwork = iterable.reduce((acc) => {
+  return trainNetworkOneIteration(acc, formattedData);
+}, bestNetwork);
+
+// Its getting the best result for the AVERAGE of the outputs,
+// so because each output has a 1/3 chance of being the right
+// one, it trains the network to 1/3 for each
+
+const randomNetworkResult = testInputsOnNetwork(
+  [5.1, 3.5, 1.4, 0.2],
+  irisNetwork
+);
+const trainedNetworkResult = testInputsOnNetwork(
+  [5.1, 3.5, 1.4, 0.2],
+  realBestNetwork
+);
+
+console.log(randomNetworkResult);
+console.log(trainedNetworkResult);
+console.log(testInputsOnNetwork([4.9, 3, 1.4, 0.2], bestNetwork));
+console.log(testInputsOnNetwork([4.7, 3.2, 1.3, 0.2], bestNetwork));
+console.log(testInputsOnNetwork([4.6, 3.1, 1.5, 0.2], bestNetwork));
+
+// 5.1,3.5,1.4,0.2,Iris-setosa
+// 4.9,3,1.4,0.2,Iris-setosa
+// 4.7,3.2,1.3,0.2,Iris-setosa
+// 4.6,3.1,1.5,0.2,Iris-setosa
+// 5,3.6,1.4,0.2,Iris-setosa
+// 5.4,3.9,1.7,0.4,Iris-setosa
+// 4.6,3.4,1.4,0.3,Iris-setosa
+// 5,3.4,1.5,0.2,Iris-setosa
+// 4.4,2.9,1.4,0.2,Iris-setosa
+// 4.9,3.1,1.5,0.1,Iris-setosa
+// 5.4,3.7,1.5,0.2,Iris-setosa
+// 4.8,3.4,1.6,0.2,Iris-setosa
+// 4.8,3,1.4,0.1,Iris-setosa
+// 4.3,3,1.1,0.1,Iris-setosa
